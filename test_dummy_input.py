@@ -94,6 +94,7 @@ lm = LSTM_LM(**lm_config)
 # construct dummy input
 raw_wave = torch.rand(1, 16000) * 2 - 1
 targets = torch.tensor([[6,2,6,6,5,6,6,3,6]]).int()
+print("target sequence", targets)
 batch_size = raw_wave.shape[0]
 
 # and let the RNNT it "learn" one single dummy target
@@ -116,6 +117,7 @@ for ep in range(2500):
     if ep % 100 == 0:
         print(loss)
 print()
+
 # now let the LM learn the same sequence as well
 lm_optim = torch.optim.AdamW(params=lm.parameters(), lr=1e-3)
 print("Train the dummy external LM")
@@ -125,15 +127,21 @@ for ep in range(1000):
     lm_optim.step()
     if ep % 100 == 0:
         print(ce)
+print()
 
+# First approach: directly integrate <ENTITY> token into the ASR model
+# and optionally, force outputing entities after outputing <ENTITY> token during decoding
 # construct the decoder to do decoding
+print("Test decoder")
 decoder = RNNT_Decoder(rnnt, lm, vocab)
 hyps = decoder.greedy_search(raw_wave, lm_scale=0.00)
-print(hyps)
+print("no LM decoding", hyps)
 hyps = decoder.greedy_search(raw_wave, lm_scale=1.50)
-print(hyps)
+print("with LM decoding", hyps)
 hyps = decoder.greedy_search(raw_wave, lm_scale=0.00, force_entity_constraint=True)
-print(hyps)
+print("no LM, force output entity decoding", hyps)
 hyps = decoder.greedy_search(raw_wave, lm_scale=1.50, force_entity_constraint=True)
-print(hyps)
+print("with LM, force output entity decoding", hyps)
 
+# Second approach: have an additional model "marking" entity position
+# and then gradually replace those positions with entity to do rescoring
