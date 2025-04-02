@@ -1,3 +1,4 @@
+import tree
 import torch
 
 class Vocab:
@@ -51,3 +52,18 @@ class Vocab:
         entity_idxs = torch.tensor(self.entity_idxs, dtype=torch.long)
         mask.scatter_(0, entity_idxs, True)
         return mask
+    
+
+    def convert_idxs_to_symbols(self, idx_seq):
+        """
+        Convert a sequence of indices to the actual words/subwords
+
+        Args:
+            idx_seq (Tensor or list): sequence of tokens
+
+        Returns:
+            symbol_seq (list): sequence of words/subwords
+        """
+        if isinstance(idx_seq, torch.Tensor):
+            idx_seq = idx_seq.tolist()
+        return tree.map_structure(lambda x: self.idx_to_symbol[x], idx_seq)

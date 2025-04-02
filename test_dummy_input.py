@@ -22,6 +22,9 @@ torch.set_num_threads(mp.cpu_count())
 random.seed(1337)
 torch.manual_seed(1337)
 
+print("Run tests on dummy inputs")
+print("This implementation restricts the entities to be just one token")
+
 # construct the vocab
 vocab_txt = "dummy_data/vocab.txt"
 entity_list_txt = "dummy_data/entity_list.txt"
@@ -32,7 +35,8 @@ vocab = Vocab(
     blank_symbol="<BLANK>",
     entity_boundary_symbol="<ENTITY>",
     )
-# print(vocab.generate_entity_mask())
+print("Vocabulary:", list(vocab.symbol_to_idx.keys()))
+print("List of entity tokens:", vocab.convert_idxs_to_symbols(vocab.entity_idxs))
 
 # some constants value
 AUDIO_SAMPLING_RATE = 16000
@@ -96,7 +100,10 @@ lm = LSTM_LM(**lm_config)
 # construct dummy input
 raw_wave = torch.rand(1, 16000) * 2 - 1
 targets = torch.tensor([[6,2,6,6,3,6,6,4,6]]).int()
-print("dummy target sequence", targets)
+print("All models will be trained on just this one dummy target sequence")
+print("dummy target sequence (idx)", targets.squeeze(0))
+print("dummy target sequence (words)", vocab.convert_idxs_to_symbols(targets.squeeze(0)))
+print()
 batch_size = raw_wave.shape[0]
 
 # and let the RNNT it "learn" one single dummy target
@@ -131,23 +138,32 @@ for ep in range(1000):
         print(ce)
 print()
 
-# First approach (E2E): directly integrate <ENTITY> token into the ASR model
-# and optionally, force outputing entities after outputing <ENTITY> token during decoding
-# construct the decoder to do decoding
-print("Test decoder")
+first_approach_str = """
+First approach (E2E): directly integrate <ENTITY> token into the ASR model
+and optionally, force outputing entities after outputing <ENTITY> token during decoding
+construct the decoder to do decoding
+"""
+print(first_approach_str)
+print("Test the RNNT greedy decoder")
+print("Reference:", targets, vocab.convert_idxs_to_symbols(targets))
 decoder = RNNT_Decoder(rnnt, lm, vocab)
 no_lm_hyps = decoder.greedy_search(raw_wave, lm_scale=0.00)
-print("no LM decoding", no_lm_hyps)
+print("no LM decoding", no_lm_hyps, vocab.convert_idxs_to_symbols(no_lm_hyps))
 with_lm_hyps = decoder.greedy_search(raw_wave, lm_scale=1.50)
-print("with LM decoding", with_lm_hyps)
+print("with LM decoding", with_lm_hyps, vocab.convert_idxs_to_symbols(with_lm_hyps))
 no_lm_constrained_hyps = decoder.greedy_search(raw_wave, lm_scale=0.00, force_entity_constraint=True)
-print("no LM, force output entity decoding", no_lm_constrained_hyps)
+print("no LM, force output entity decoding", no_lm_constrained_hyps, vocab.convert_idxs_to_symbols(no_lm_constrained_hyps))
 with_lm_constrained_hyps = decoder.greedy_search(raw_wave, lm_scale=1.50, force_entity_constraint=True)
-print("with LM, force output entity decoding", with_lm_constrained_hyps)
+print("with LM, force output entity decoding", with_lm_constrained_hyps, vocab.convert_idxs_to_symbols(with_lm_constrained_hyps))
 print()
 
-# Second approach (Cascaded): have an additional model "marking" entity position
-# and then gradually replace those positions with entity to do rescoring
+second_approach_str = """
+Second approach (Cascaded): have an additional model "marking" entity position
+and then gradually replace those positions with entity from the list. Similar
+to a label-synchronous beam search over all entity positions and hypothesis
+rescoring in two-pass decoding.
+"""
+print(second_approach_str)
 entity_recognizer_config=dict(
     n_blstm_layers=1,
     input_dim=vocab.vocab_size_no_blank,
@@ -171,19 +187,29 @@ for ep in range(500):
 print()
 
 # construct the rescorer
+print("Test the entity rescorer")
 rescorer = EntityRescorer(rnnt, lm, vocab, entity_recognizer)
-hyps = rescorer.rescore_with_allowed_entities(
+hyp = torch.tensor(with_lm_hyps).long()
+print("Sequence to be rescored:", hyp, vocab.convert_idxs_to_symbols(hyp))
+hyps_beams = rescorer.rescore_with_allowed_entities(
     raw_wave,
-    torch.tensor(targets).long(),
+    hyp,
     beam_size=2,
     lm_scale=0.5,
 )
-print(hyps)
-hyps = rescorer.rescore_with_allowed_entities(
+print("Top rescored hypotheses:")
+print(hyps_beams)
+print(vocab.convert_idxs_to_symbols(hyps_beams))
+print()
+
+print("Sequence to be rescored:", targets, vocab.convert_idxs_to_symbols(targets))
+hyps_beams = rescorer.rescore_with_allowed_entities(
     raw_wave,
-    torch.tensor(targets).long(),
+    targets.long(),
     beam_size=2,
     lm_scale=0.5,
     rescore_valid_entities=False,
 )
-print(hyps)
+print("Top rescored hypotheses:")
+print(hyps_beams)
+print(vocab.convert_idxs_to_symbols(hyps_beams))
