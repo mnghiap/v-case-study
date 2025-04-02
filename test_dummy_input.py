@@ -12,6 +12,8 @@ from model.asr.rnnt.rnnt import RNNT
 from model.asr.rnnt.rnnt_decoder import RNNT_Decoder
 from model.lm.lstm_lm import LSTM_LM
 from model.vocab import Vocab
+from model.entity_recognizer.blstm_entity_recognizer import BLSTM_Entity_Recognizer
+from model.asr.rnnt.entity_rescorer import EntityRescorer
 
 # set num threads to max threads
 torch.set_num_threads(mp.cpu_count())
@@ -93,8 +95,8 @@ lm = LSTM_LM(**lm_config)
 
 # construct dummy input
 raw_wave = torch.rand(1, 16000) * 2 - 1
-targets = torch.tensor([[6,2,6,6,5,6,6,3,6]]).int()
-print("target sequence", targets)
+targets = torch.tensor([[6,2,6,6,3,6,6,4,6]]).int()
+print("dummy target sequence", targets)
 batch_size = raw_wave.shape[0]
 
 # and let the RNNT it "learn" one single dummy target
@@ -123,25 +125,65 @@ lm_optim = torch.optim.AdamW(params=lm.parameters(), lr=1e-3)
 print("Train the dummy external LM")
 for ep in range(1000):
     ce = -lm.compute_lm_score(targets) # notice the minus sign, because this function computes log p(seq)
-    ce.backward()
+    ce.sum().backward()
     lm_optim.step()
     if ep % 100 == 0:
         print(ce)
 print()
 
-# First approach: directly integrate <ENTITY> token into the ASR model
+# First approach (E2E): directly integrate <ENTITY> token into the ASR model
 # and optionally, force outputing entities after outputing <ENTITY> token during decoding
 # construct the decoder to do decoding
 print("Test decoder")
 decoder = RNNT_Decoder(rnnt, lm, vocab)
-hyps = decoder.greedy_search(raw_wave, lm_scale=0.00)
-print("no LM decoding", hyps)
-hyps = decoder.greedy_search(raw_wave, lm_scale=1.50)
-print("with LM decoding", hyps)
-hyps = decoder.greedy_search(raw_wave, lm_scale=0.00, force_entity_constraint=True)
-print("no LM, force output entity decoding", hyps)
-hyps = decoder.greedy_search(raw_wave, lm_scale=1.50, force_entity_constraint=True)
-print("with LM, force output entity decoding", hyps)
+no_lm_hyps = decoder.greedy_search(raw_wave, lm_scale=0.00)
+print("no LM decoding", no_lm_hyps)
+with_lm_hyps = decoder.greedy_search(raw_wave, lm_scale=1.50)
+print("with LM decoding", with_lm_hyps)
+no_lm_constrained_hyps = decoder.greedy_search(raw_wave, lm_scale=0.00, force_entity_constraint=True)
+print("no LM, force output entity decoding", no_lm_constrained_hyps)
+with_lm_constrained_hyps = decoder.greedy_search(raw_wave, lm_scale=1.50, force_entity_constraint=True)
+print("with LM, force output entity decoding", with_lm_constrained_hyps)
+print()
 
-# Second approach: have an additional model "marking" entity position
+# Second approach (Cascaded): have an additional model "marking" entity position
 # and then gradually replace those positions with entity to do rescoring
+entity_recognizer_config=dict(
+    n_blstm_layers=1,
+    input_dim=vocab.vocab_size_no_blank,
+    embed_dim=32,
+    hidden_dim=64,
+    output_dim=2, # is entity or is not entity
+)
+entity_recognizer = BLSTM_Entity_Recognizer(**entity_recognizer_config)
+
+# now let the entity recognizer learn where the entities are
+entity_recognizer_optim = torch.optim.AdamW(params=entity_recognizer.parameters(), lr=1e-3)
+targets_is_entity = torch.tensor([[0,1,0,0,1,0,0,1,0]]).long()
+print("Train the dummy entity recognizer")
+for ep in range(500):
+    ce = entity_recognizer.compute_ce_loss(targets, targets_is_entity)
+    loss = ce.sum()
+    loss.backward()
+    entity_recognizer_optim.step()
+    if ep % 100 == 0:
+        print(loss)
+print()
+
+# construct the rescorer
+rescorer = EntityRescorer(rnnt, lm, vocab, entity_recognizer)
+hyps = rescorer.rescore_with_allowed_entities(
+    raw_wave,
+    torch.tensor(targets).long(),
+    beam_size=2,
+    lm_scale=0.5,
+)
+print(hyps)
+hyps = rescorer.rescore_with_allowed_entities(
+    raw_wave,
+    torch.tensor(targets).long(),
+    beam_size=2,
+    lm_scale=0.5,
+    rescore_valid_entities=False,
+)
+print(hyps)
