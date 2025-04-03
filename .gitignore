@@ -172,3 +172,6 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Ignore the PPT
+voize_Case_Study_Speech_Q2_2025.pptx

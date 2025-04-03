@@ -13,7 +13,7 @@ from model.asr.rnnt.rnnt_decoder import RNNT_Decoder
 from model.lm.lstm_lm import LSTM_LM
 from model.vocab import Vocab
 from model.entity_recognizer.blstm_entity_recognizer import BLSTM_Entity_Recognizer
-from model.asr.rnnt.entity_rescorer import EntityRescorer
+from model.entity_rescorer import EntityRescorer
 
 # set num threads to max threads
 torch.set_num_threads(mp.cpu_count())
