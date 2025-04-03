@@ -30,12 +30,30 @@ class LSTM_LM(nn.Module):
 
     
     def get_initial_state(self, batch_size):
+        """
+        Get initial LM state. Mostly used for decoding.
+
+        Args:
+            batch_size (int)
+
+        Returns:
+            (h0, c0): each h0 or c0 has shape (N lstm layers, batch size, lstm hidden dim)
+        """
         h0 = torch.zeros(self.n_lstm_layers, batch_size, self.hidden_dim)
         c0 = torch.zeros(self.n_lstm_layers, batch_size, self.hidden_dim)
         return (h0, c0)
     
 
     def get_bos_symbol(self, batch_size):
+        """
+        Get BOS symbol
+
+        Args:
+            batch_size (int)
+
+        Returns:
+            (B, 1) tensor of BOS
+        """
         return torch.full((batch_size, 1), fill_value=self.bos_idx)
 
 
@@ -43,6 +61,13 @@ class LSTM_LM(nn.Module):
         """
         Forward but just one single step, with state as input.
         Mainly used for decoding.
+
+        Args:
+            x: current symbol (B, 1)
+            state: tuple of (h0, c0) state
+
+        Returns:
+            (logits, (hn, cn)): unnormalized logits and next state
         """
         x = self.embed(x)
         x, (hn, cn) = self.lstm(x, state)
@@ -70,6 +95,9 @@ class LSTM_LM(nn.Module):
     
     def compute_lm_score(self, x: torch.Tensor):
         """
+        Compute log p(w_1^n) = prod_{i=1}^n p(w_i | w_1^{i-1})
+        Note that this is log p, not -log p like cross entropy loss.
+
         Args:
             x: target sequences without BOS and EOS (B, S)
         Returns:

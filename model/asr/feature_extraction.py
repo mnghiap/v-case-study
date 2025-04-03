@@ -12,6 +12,8 @@ class AudioFeatureExtraction(nn.Module):
 
     def forward(self, raw_wave):
         """
+        Perform MFCC feature extraction on audio raw wave
+
         Args:
             raw_wave: (B, n_audio_samples)
 

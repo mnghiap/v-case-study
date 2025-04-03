@@ -60,15 +60,18 @@ class EntityRescorer:
         work for batch size 1.
 
         Args:
-            raw_wave: (B, n_audio_samples)
-            hyp: (B, S)
-            entity_pos: (B, S)
+            raw_wave: (1, n_audio_samples)
+            hyp: (1, S)
+            entity_pos: (1, S)
             beam_size: how many entities to consider
             lm_scale:
             rescore_valid_entities: For some tokens recognized as an entity, the token
                 itself might already be in the list of allowed entities. If True, then
                 still reconsider othre allowed entities for such positions. If False,
                 leave these positions as they are.
+
+        Returns:
+            hyps_beams (Tensor): hypothesized rescored sequences of shape (1, beam_size)
         """
         n_entities = len(self.vocab.entity_idxs)
         assert beam_size <= n_entities, \

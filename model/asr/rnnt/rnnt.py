@@ -28,6 +28,16 @@ class RNNT(nn.Module):
 
 
     def forward(self, raw_wave, target):
+        """
+        This forward returns the logits compatible with torchaudio RNNT loss
+
+        Args:
+            raw_wave: (B, n_audio_samples)
+            target: (B, S)
+
+        Returns:
+            logits: (B, T, S+1, V+1)
+        """
         features = self.feature_extraction(raw_wave)
         encoder_output = self.encoder(features)
         predictor_output, _ = self.predictor(target)

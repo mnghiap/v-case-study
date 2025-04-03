@@ -44,7 +44,7 @@ class RNNT_Decoder:
                 and then another <ENTITY>
 
         Returns:
-
+            hyp_no_blank (List[List]): Hypothesized label sequences for each seq in batch
         """
         self.rnnt.eval()
         self.lm.eval()
